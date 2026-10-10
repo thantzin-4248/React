@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import Header from "./components/Header";
 import SearchBar from "./components/SearchBar";
@@ -7,51 +7,29 @@ import CourseList from "./components/CourseList";
 import CourseForm from "./components/CourseForm";
 import Footer from "./components/Footer";
 
-import { getCourses } from "./services/courseService";
+import useCourses from "./hooks/useCourses";
+
 import "./App.css";
 
 function App() {
-  const [courses, setCourses] = useState([]);
-  const [createdCourses, setCreatedCourses] = useState([]);
-  const [updatedCourses, setUpdatedCourses] = useState([]);
-  const [deletedCourseIds, setDeletedCourseIds] = useState([]);
+  // Course data and operations come from the custom hook.
+  const {
+    displayedCourses,
+    enrolledCourses,
+    search,
+    setSearch,
+    loading,
+    error,
+    handleAddCourse,
+    handleUpdateCourse,
+    handleDeleteCourse,
+    handleEnroll,
+    retryFetch,
+  } = useCourses();
 
-  const [enrolledCourses, setEnrolledCourses] = useState([]);
+  // UI state: these values control the create/edit modal.
   const [editingCourse, setEditingCourse] = useState(null);
   const [isCourseFormOpen, setIsCourseFormOpen] = useState(false);
-
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  // Fetch courses when the search query changes.
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const timer = setTimeout(async () => {
-      try {
-        setLoading(true);
-        setError("");
-
-        const data = await getCourses(search, controller.signal);
-        setCourses(data);
-      } catch (err) {
-        if (err.name !== "AbortError") {
-          setError(err.message || "Unable to load courses.");
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    }, 400);
-
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [search, refreshKey]);
 
   // Open the form in create mode.
   function handleStartCreate() {
@@ -71,46 +49,7 @@ function App() {
     setEditingCourse(null);
   }
 
-  // Add a new course.
-  function handleAddCourse(newCourse) {
-    setCreatedCourses((current) => [newCourse, ...current]);
-  }
-
-  // Update a created course or an API course.
-  function handleUpdateCourse(updatedCourse) {
-    const isCreatedCourse = createdCourses.some(
-      (course) => course.id === updatedCourse.id
-    );
-
-    if (isCreatedCourse) {
-      setCreatedCourses((current) =>
-        current.map((course) =>
-          course.id === updatedCourse.id
-            ? updatedCourse
-            : course
-        )
-      );
-      return;
-    }
-
-    setUpdatedCourses((current) => {
-      const alreadyUpdated = current.some(
-        (course) => course.id === updatedCourse.id
-      );
-
-      if (alreadyUpdated) {
-        return current.map((course) =>
-          course.id === updatedCourse.id
-            ? updatedCourse
-            : course
-        );
-      }
-
-      return [...current, updatedCourse];
-    });
-  }
-
-  // Save the form in create or edit mode.
+  // Save a new course or update an existing one.
   function handleSaveCourse(courseData) {
     if (editingCourse) {
       handleUpdateCourse({
@@ -121,97 +60,8 @@ function App() {
       handleAddCourse(courseData);
     }
 
-    // Close the form after saving.
-    setIsCourseFormOpen(false);
-    setEditingCourse(null);
+    handleCancelEdit();
   }
-
-  // Delete a course after confirmation.
-  function handleDeleteCourse(courseId) {
-    const course = displayedCourses.find(
-      (item) => item.id === courseId
-    );
-
-    if (!course) return;
-
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${course.title}"?`
-    );
-
-    if (!confirmed) return;
-
-    setCreatedCourses((current) =>
-      current.filter((item) => item.id !== courseId)
-    );
-
-    setUpdatedCourses((current) =>
-      current.filter((item) => item.id !== courseId)
-    );
-
-    setDeletedCourseIds((current) =>
-      current.includes(courseId)
-        ? current
-        : [...current, courseId]
-    );
-
-    setEnrolledCourses((current) =>
-      current.filter((id) => id !== courseId)
-    );
-
-    if (editingCourse?.id === courseId) {
-      setEditingCourse(null);
-      setIsCourseFormOpen(false);
-    }
-  }
-
-  // Prevent duplicate enrollment.
-  function handleEnroll(courseId) {
-    setEnrolledCourses((current) =>
-      current.includes(courseId)
-        ? current
-        : [...current, courseId]
-    );
-  }
-
-  // Filter locally created courses.
-  const normalizedSearch = search.trim().toLowerCase();
-
-  const matchingCreatedCourses = createdCourses.filter((course) => {
-    const searchableText = [
-      course.title,
-      course.instructor,
-      course.category,
-      course.description,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return searchableText.includes(normalizedSearch);
-  });
-
-  // Hide deleted API courses and avoid duplicate IDs.
-  const createdCourseIds = new Set(
-    createdCourses.map((course) => course.id)
-  );
-
-  const displayedApiCourses = courses
-    .filter(
-      (course) =>
-        !deletedCourseIds.includes(course.id) &&
-        !createdCourseIds.has(course.id)
-    )
-    .map(
-      (course) =>
-        updatedCourses.find(
-          (updatedCourse) => updatedCourse.id === course.id
-        ) ?? course
-    );
-
-  const displayedCourses = [
-    ...matchingCreatedCourses,
-    ...displayedApiCourses,
-  ];
 
   return (
     <div className="app">
@@ -233,7 +83,9 @@ function App() {
         <section className="create-course-section container">
           <div>
             <h2>Explore Courses</h2>
-            <p>Discover courses and manage your learning content.</p>
+            <p>
+              Discover courses and manage your learning content.
+            </p>
           </div>
 
           <button
@@ -245,7 +97,7 @@ function App() {
           </button>
         </section>
 
-        {/* Show the shared form only when requested */}
+        {/* Shared create/edit modal */}
         {isCourseFormOpen && (
           <div
             className="modal-backdrop"
@@ -307,7 +159,7 @@ function App() {
             <button
               type="button"
               className="retry-button"
-              onClick={() => setRefreshKey((key) => key + 1)}
+              onClick={retryFetch}
             >
               Try Again
             </button>

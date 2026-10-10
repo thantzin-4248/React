@@ -1,40 +1,40 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCourses } from "../services/courseService";
 
 export default function useCourses() {
   // Courses fetched from the API.
   const [courses, setCourses] = useState([]);
 
-  // Local changes that have not been saved to a backend.
+  // Frontend-only changes.
   const [createdCourses, setCreatedCourses] = useState([]);
   const [updatedCourses, setUpdatedCourses] = useState([]);
   const [deletedCourseIds, setDeletedCourseIds] = useState([]);
 
-  // Other course-related state.
+  // Enrollment and page state.
   const [enrolledCourses, setEnrolledCourses] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  // Fetch courses whenever the search term changes.
+  // Fetch courses when search or retry changes.
   useEffect(() => {
     const controller = new AbortController();
 
-    const timeoutId = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       setLoading(true);
       setError("");
 
       try {
-        const result = await getCourses(
-          search,
-          controller.signal
-        );
+        const data = await getCourses(search, controller.signal);
 
-        setCourses(result);
+        if (!controller.signal.aborted) {
+          setCourses(Array.isArray(data) ? data : []);
+        }
       } catch (err) {
-        if (err.name !== "AbortError") {
-          setError("Unable to load courses. Please try again.");
+        if (!controller.signal.aborted) {
+          setError(err.message || "Unable to load courses.");
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -44,12 +44,16 @@ export default function useCourses() {
     }, 400);
 
     return () => {
-      clearTimeout(timeoutId);
+      clearTimeout(timer);
       controller.abort();
     };
-  }, [search]);
+  }, [search, refreshKey]);
 
-  // Build the final list from API data and local changes.
+  // Normalize IDs so numeric and string IDs compare consistently.
+  const sameId = (first, second) =>
+    String(first) === String(second);
+
+  // Combine API courses with local create, update, and delete changes.
   const displayedCourses = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
@@ -67,20 +71,16 @@ export default function useCourses() {
       return searchableText.includes(normalizedSearch);
     };
 
-    const visibleCreatedCourses = createdCourses.filter(
-      matchesSearch
-    );
+    const visibleCreatedCourses = createdCourses.filter(matchesSearch);
 
     const visibleApiCourses = courses
       .filter(
         (course) =>
-          !deletedCourseIds.some(
-            (id) => String(id) === String(course.id)
-          )
+          !deletedCourseIds.some((id) => sameId(id, course.id))
       )
       .map((course) => {
-        const updatedCourse = updatedCourses.find(
-          (item) => String(item.id) === String(course.id)
+        const updatedCourse = updatedCourses.find((item) =>
+          sameId(item.id, course.id)
         );
 
         return updatedCourse ?? course;
@@ -88,8 +88,8 @@ export default function useCourses() {
       .filter(matchesSearch)
       .filter(
         (course) =>
-          !createdCourses.some(
-            (item) => String(item.id) === String(course.id)
+          !createdCourses.some((item) =>
+            sameId(item.id, course.id)
           )
       );
 
@@ -103,99 +103,97 @@ export default function useCourses() {
   ]);
 
   // CREATE
-  function handleAddCourse(courseData) {
-    setCreatedCourses((previous) => [
-      courseData,
-      ...previous,
-    ]);
-  }
+  const handleAddCourse = useCallback((newCourse) => {
+    setCreatedCourses((current) => [newCourse, ...current]);
+  }, []);
 
   // UPDATE
-  function handleUpdateCourse(courseData) {
-    const isLocallyCreated = createdCourses.some(
-      (course) =>
-        String(course.id) === String(courseData.id)
-    );
-
-    if (isLocallyCreated) {
-      setCreatedCourses((previous) =>
-        previous.map((course) =>
-          String(course.id) === String(courseData.id)
-            ? courseData
-            : course
-        )
+  const handleUpdateCourse = useCallback(
+    (updatedCourse) => {
+      const isCreatedCourse = createdCourses.some((course) =>
+        sameId(course.id, updatedCourse.id)
       );
 
-      return;
-    }
-
-    setUpdatedCourses((previous) => {
-      const alreadyUpdated = previous.some(
-        (course) =>
-          String(course.id) === String(courseData.id)
-      );
-
-      if (alreadyUpdated) {
-        return previous.map((course) =>
-          String(course.id) === String(courseData.id)
-            ? courseData
-            : course
+      if (isCreatedCourse) {
+        setCreatedCourses((current) =>
+          current.map((course) =>
+            sameId(course.id, updatedCourse.id)
+              ? updatedCourse
+              : course
+          )
         );
+
+        return;
       }
 
-      return [...previous, courseData];
-    });
-  }
+      setUpdatedCourses((current) => {
+        const alreadyUpdated = current.some((course) =>
+          sameId(course.id, updatedCourse.id)
+        );
+
+        if (alreadyUpdated) {
+          return current.map((course) =>
+            sameId(course.id, updatedCourse.id)
+              ? updatedCourse
+              : course
+          );
+        }
+
+        return [...current, updatedCourse];
+      });
+    },
+    [createdCourses]
+  );
 
   // DELETE
-  function handleDeleteCourse(courseId) {
-    const course = displayedCourses.find(
-      (item) => String(item.id) === String(courseId)
-    );
+  const handleDeleteCourse = useCallback(
+    (courseId) => {
+      const course = displayedCourses.find((item) =>
+        sameId(item.id, courseId)
+      );
 
-    if (!course) return;
+      if (!course) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${course.title}"?`
-    );
+      const confirmed = window.confirm(
+        `Are you sure you want to delete "${course.title}"?`
+      );
 
-    if (!confirmed) return;
+      if (!confirmed) return;
 
-    setCreatedCourses((previous) =>
-      previous.filter(
-        (item) => String(item.id) !== String(courseId)
-      )
-    );
+      setCreatedCourses((current) =>
+        current.filter((item) => !sameId(item.id, courseId))
+      );
 
-    setUpdatedCourses((previous) =>
-      previous.filter(
-        (item) => String(item.id) !== String(courseId)
-      )
-    );
+      setUpdatedCourses((current) =>
+        current.filter((item) => !sameId(item.id, courseId))
+      );
 
-    setDeletedCourseIds((previous) =>
-      previous.some((id) => String(id) === String(courseId))
-        ? previous
-        : [...previous, courseId]
-    );
+      setDeletedCourseIds((current) =>
+        current.some((id) => sameId(id, courseId))
+          ? current
+          : [...current, courseId]
+      );
 
-    setEnrolledCourses((previous) =>
-      previous.filter(
-        (id) => String(id) !== String(courseId)
-      )
-    );
-  }
+      setEnrolledCourses((current) =>
+        current.filter((id) => !sameId(id, courseId))
+      );
+    },
+    [displayedCourses]
+  );
 
   // ENROLL
-  function handleEnroll(courseId) {
-    setEnrolledCourses((previous) =>
-      previous.some(
-        (id) => String(id) === String(courseId)
-      )
-        ? previous
-        : [...previous, courseId]
+  const handleEnroll = useCallback((courseId) => {
+    setEnrolledCourses((current) =>
+      current.some((id) => sameId(id, courseId))
+        ? current
+        : [...current, courseId]
     );
-  }
+  }, []);
+
+  // Retry the API request.
+  const retryFetch = useCallback(() => {
+    setRefreshKey((current) => current + 1);
+  }, []);
 
   return {
     displayedCourses,
@@ -208,5 +206,6 @@ export default function useCourses() {
     handleUpdateCourse,
     handleDeleteCourse,
     handleEnroll,
+    retryFetch,
   };
 }
