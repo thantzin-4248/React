@@ -1,36 +1,18 @@
 
 function SearchBar({ search, onSearchChange }) {
-    return (
-        <section className="search-section">
-            <div className="container">
-                <label htmlFor="course-search">
-                    Search courses
-                </label>
+  return (
+    <section className="container search-section">
+      <label htmlFor="course-search">Find your next course</label>
 
-                <div className="search-wrapper">
-                    <input
-                        id="course-search"
-                        type="search"
-                        placeholder="Title, instructor, or category..."
-                        value={search}
-                        onChange={(event) =>
-                            onSearchChange(event.target.value)
-                        }
-                    />
-
-                    {search && (
-                        <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => onSearchChange('')}
-                        >
-                            Clear
-                        </button>
-                    )}
-                </div>
-            </div>
-        </section>
-    )
+      <input
+        id="course-search"
+        type="search"
+        value={search}
+        onChange={(event) => onSearchChange(event.target.value)}
+        placeholder="Search by course, instructor, or category..."
+      />
+    </section>
+  );
 }
 
-export default SearchBar
+export default SearchBar;

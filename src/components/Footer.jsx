@@ -1,14 +1,14 @@
 
 function Footer() {
-    return (
-        <footer id="about" className="footer">
-            <div className="container">
-                <p>
-                    © 2026 LearnHub. All rights reserved.
-                </p>
-            </div>
-        </footer>
-    )
+  return (
+    <footer className="site-footer">
+      <div className="container">
+        <p>
+          © {new Date().getFullYear()} LearnHub. Keep learning, keep growing.
+        </p>
+      </div>
+    </footer>
+  );
 }
 
-export default Footer
+export default Footer;

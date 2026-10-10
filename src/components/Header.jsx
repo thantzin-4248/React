@@ -1,25 +1,23 @@
 
-function Header({ enrolledCount }) {
-    return (
-        <header className="header">
-            <div className="container header-content">
-                <a className="brand" href="/">
-                    LearnHub
-                </a>
+function Header({ enrolledCount = 0 }) {
+  return (
+    <header className="site-header">
+      <div className="container header-content">
+        <a className="brand" href="/" aria-label="LearnHub home">
+          LearnHub<span>.</span>
+        </a>
 
-                <nav aria-label="Main navigation">
-                    <a href="#home">Home</a>
-                    <a href="#courses">Courses</a>
-                    <a href="#about">About</a>
-                </nav>
+        <nav className="main-nav" aria-label="Main navigation">
+          <a href="#courses">Courses</a>
+          <a href="#add-course">Create Course</a>
+        </nav>
 
-                <div className="my-courses">
-                    My Courses:
-                    <strong>{enrolledCount}</strong>
-                </div>
-            </div>
-        </header>
-    )
+        <div className="enrollment-summary">
+          Enrolled: <strong>{enrolledCount}</strong>
+        </div>
+      </div>
+    </header>
+  );
 }
 
-export default Header
+export default Header;
